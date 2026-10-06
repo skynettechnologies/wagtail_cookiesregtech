@@ -1,0 +1,140 @@
+{% extends "wagtailadmin/base.html" %}
+{% load static i18n wagtailadmin_tags %}
+
+{% block titletag %}CookiesRegTech{% endblock %}
+
+{# The logo is the page favicon too. #}
+{% block branding_favicon %}<link rel="icon" type="image/svg+xml" href="{% static 'wagtail_cookiesregtech/logo.svg' %}">{% endblock %}
+
+{% block extra_css %}
+    {{ block.super }}
+    {# ?v= busts browser caches when the plugin is upgraded. #}
+    <link rel="stylesheet" href="{% static 'wagtail_cookiesregtech/crt-admin.css' %}?v={{ version }}">
+{% endblock %}
+
+{% block content %}
+    {% include "wagtailadmin/shared/header.html" with title="CookiesRegTech" subtitle="Cookie Consent" icon="cookiesregtech" %}
+
+    {# Flash messages are rendered by wagtailadmin/base.html, so none are repeated here. #}
+    <div class="nice-padding">
+    <div class="crt-wrap">
+        <div class="crt-head">
+            <img class="crt-logo" src="{% static 'wagtail_cookiesregtech/logo.svg' %}" alt="" width="40" height="40">
+            <p class="crt-tagline">GDPR/CCPA consent banner, cookie scanner and consent log for this website.</p>
+            {% if state == 'connected' %}<span class="crt-pill">● Connected</span>{% endif %}
+        </div>
+
+        {% if state == 'connect' %}
+            <form method="post" class="crt-panel">
+                {% csrf_token %}
+                <input type="hidden" name="crt_action" value="connect">
+                <label class="crt-field">
+                    <span>Account email</span>
+                    <input type="email" name="email" required value="{{ settings.email|default:admin_email }}">
+                    <small>The consent dashboard login. If this email already has a CookiesRegTech account, we send it a confirmation link instead of creating a new one.</small>
+                </label>
+                <label class="crt-consent">
+                    <input type="checkbox" name="consent" value="1" required>
+                    <span>Create a free CookiesRegTech account for this email, connect this website, and accept the
+                        <a href="https://www.cookiesregtech.com/terms-and-condition" target="_blank" rel="noopener">Terms &amp; Conditions</a> and
+                        <a href="https://www.cookiesregtech.com/privacy-policy" target="_blank" rel="noopener">Privacy Policy</a>.</span>
+                </label>
+                <p class="crt-actions">
+                    <button type="submit" class="crt-btn crt-btn-primary">Connect website</button>
+                    <span class="crt-hint">Free plan · no card required</span>
+                </p>
+            </form>
+
+        {% elif state == 'pending' %}
+            <div class="crt-notice-box">
+                <h3>Almost done. Confirm from the inbox</h3>
+                <p>A confirmation link was sent to <strong>{{ settings.email }}</strong> because this email already has a CookiesRegTech account. Click the link in that email, then come back here.</p>
+            </div>
+            <form method="post" class="crt-actions">
+                {% csrf_token %}
+                <button type="submit" name="crt_action" value="check" class="crt-btn crt-btn-primary">Check status</button>
+                <button type="submit" name="crt_action" value="reset" class="crt-btn">Start over</button>
+            </form>
+
+        {% else %}
+            {% if not overview %}
+                <div class="crt-notice crt-notice-warning" role="alert">
+                    Could not load the account overview from CookiesRegTech{% if overview_error %} ({{ overview_error }}){% endif %}. The banner keeps working. Reload to try again.
+                </div>
+            {% endif %}
+
+            <table class="crt-status">
+                <tr><th scope="row">Account</th><td>{{ account_email|default:"—" }}</td></tr>
+                <tr><th scope="row">Website</th><td>{{ overview.hostname|default:settings.domain_id }}</td></tr>
+                <tr><th scope="row">Plan</th><td>{{ overview.plan.name|default:"—" }}</td></tr>
+                <tr><th scope="row">Banner</th><td>
+                    {% if overview %}
+                        {% if overview.bannerPublished %}Published (version {{ overview.bannerVersion }}){% else %}Not published yet. Open the dashboard to publish it.{% endif %}
+                    {% else %}—{% endif %}
+                </td></tr>
+                {% if overview.lastScan %}
+                    <tr><th scope="row">Last scan</th><td>{{ overview.lastScan.completedAt }}, {{ overview.lastScan.urlsScanned }} pages, {{ overview.lastScan.cookiesFound }} cookies found</td></tr>
+                {% endif %}
+            </table>
+
+            {% if overview.cookies %}
+                <details class="crt-panel" {% if cookies_open %}open{% endif %}>
+                    <summary>Cookies detected ({{ overview.cookies|length }})</summary>
+                    <div class="crt-table-scroll">
+                    <table class="crt-cookies">
+                        <thead><tr><th scope="col">Cookie</th><th scope="col">Category</th><th scope="col">Domain</th><th scope="col">Duration</th></tr></thead>
+                        <tbody>
+                        {% for cookie in overview.cookies %}
+                            <tr>
+                                <td><code>{{ cookie.name }}</code></td>
+                                <td>{{ cookie.category_label }}</td>
+                                <td>{{ cookie.domain }}</td>
+                                <td>{{ cookie.duration|default:"Session" }}</td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                    </div>
+                    <p class="crt-help">Categories and descriptions are managed in the CookiesRegTech dashboard (Cookie Manager). Run a scan there to refresh this list.</p>
+                </details>
+            {% elif overview %}
+                <p class="crt-help">No cookies recorded yet. Open the dashboard and run a scan from Cookie Manager to build the cookie list.</p>
+            {% endif %}
+
+            <form method="post" class="crt-panel">
+                {% csrf_token %}
+                <p>
+                    <label>
+                        <input type="checkbox" name="banner_enabled" value="1" {% if settings.banner_enabled %}checked{% endif %}>
+                        Show the consent banner on this site
+                    </label>
+                </p>
+                <div class="crt-actions">
+                    <button type="submit" name="crt_action" value="save" class="crt-btn">Save</button>
+                </div>
+            </form>
+
+            <div class="crt-actions">
+                {# The dashboard is the external CookiesRegTech site: it opens in a separate tab so this admin page stays put. #}
+                <form method="post" target="_blank" class="crt-inline-form">
+                    {% csrf_token %}
+                    <input type="hidden" name="crt_action" value="dashboard">
+                    <button type="submit" class="crt-btn crt-btn-primary">Open dashboard</button>
+                </form>
+                <form method="post" target="_blank" class="crt-inline-form">
+                    {% csrf_token %}
+                    <input type="hidden" name="crt_action" value="upgrade">
+                    <button type="submit" class="crt-btn crt-btn-outline">Upgrade plan</button>
+                </form>
+                <form method="post" class="crt-inline-form crt-inline"
+                      onsubmit="return confirm('Disconnect this site? The banner turns off until you reconnect.');">
+                    {% csrf_token %}
+                    <input type="hidden" name="crt_action" value="disconnect">
+                    <button type="submit" class="crt-btn crt-btn-danger">Disconnect</button>
+                </form>
+            </div>
+        {% endif %}
+        <p class="crt-version">CookiesRegTech Wagtail plugin v{{ version }}</p>
+    </div>
+    </div>
+{% endblock %}
